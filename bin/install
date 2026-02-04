@@ -81,6 +81,12 @@ install_erlang() {
     exit 1
   fi
 
+  # Proto's asdf backend expects a primary executable at {install_path}/{tool_id}.
+  # Create a symlink so proto can find it.
+  if [ ! -e "$install_path/erlang" ]; then
+    ln -sf bin/erl "$install_path/erlang"
+  fi
+
   echo "==> Erlang $version installed successfully"
 }
 
