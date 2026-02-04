@@ -48,14 +48,14 @@ jobs:
         env:
           ASDF_INSTALL_TYPE: version
           ASDF_INSTALL_VERSION: ${{ env.ERLANG_VERSION }}
-          ASDF_INSTALL_PATH: ${{ runner.temp }}/erlang
+          ASDF_INSTALL_PATH: /tmp/erlang
         run: ./bin/install
         timeout-minutes: 30
 
       - name: Verify erl works
         shell: bash
         run: |
-          ${{ runner.temp }}/erlang/bin/erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
+          /tmp/erlang/bin/erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
 
   # Test with proto's asdf backend
   test-proto:
