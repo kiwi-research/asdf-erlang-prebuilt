@@ -25,11 +25,14 @@ asdf install erlang 27.0
 In `.prototools`:
 
 ```toml
-"asdf:erlang" = "27.0"
+"asdf:erlang" = "28.2"
+"asdf:elixir" = "1.19.5-otp-28"
 
 [tools."asdf:erlang"]
 asdf-repository = "https://github.com/kiwi-research/asdf-erlang-prebuilt"
 ```
+
+Elixir uses the standard [asdf-elixir](https://github.com/asdf-vm/asdf-elixir) plugin via proto's built-in asdf backend — no custom plugin config needed. The `-otp-28` suffix selects a build compiled against the matching OTP version.
 
 ## Fallback Behavior
 
