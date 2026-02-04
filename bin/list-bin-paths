@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Tell asdf (and proto's asdf backend) where executables are located.
+# Outputs directories relative to the install path that contain executables.
+echo "bin"
