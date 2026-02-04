@@ -66,22 +66,18 @@ jobs:
           path: plugin
 
       - name: Install proto
-        run: curl -fsSL https://moonrepo.dev/install/proto.sh | bash -s -- --yes
+        run: |
+          curl -fsSL https://moonrepo.dev/install/proto.sh | bash -s -- --yes
+          echo "$HOME/.proto/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.proto/shims" >> "$GITHUB_PATH"
 
       - name: Configure proto
         run: |
-          cat > .prototools << 'EOF'
-          "asdf:erlang" = "${{ env.ERLANG_VERSION }}"
-
-          [tools."asdf:erlang"]
-          asdf-repository = "https://github.com/${{ github.repository }}"
-          EOF
+          printf '"asdf:erlang" = "%s"\n\n[tools."asdf:erlang"]\nasdf-repository = "https://github.com/%s"\n' \
+            "${{ env.ERLANG_VERSION }}" "${{ github.repository }}" > .prototools
+          cat .prototools
 
       - name: Install Erlang via proto
-        env:
-          PROTO_HOME: ${{ github.workspace }}/.proto
-          PATH: ${{ github.workspace }}/.proto/bin:${{ github.workspace }}/.proto/shims:$PATH
         run: |
-          export PATH="$HOME/.proto/bin:$HOME/.proto/shims:$PATH"
           proto install "asdf:erlang"
           erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
