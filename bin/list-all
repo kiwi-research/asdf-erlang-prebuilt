@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# List available Erlang/OTP versions from prebuilt sources.
+# macOS: queries erlef/otp_builds CSV
+# Linux: queries hex.pm builds.txt
+
+set -euo pipefail
+
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64) echo "x86_64" ;;
+    aarch64 | arm64) echo "aarch64" ;;
+    *)
+      echo "Unsupported architecture: $(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+list_macos_versions() {
+  local arch
+  case "$(uname -m)" in
+    x86_64) arch="x86_64" ;;
+    arm64) arch="aarch64" ;;
+  esac
+
+  local url="https://raw.githubusercontent.com/erlef/otp_builds/refs/heads/main/builds/${arch}-apple-darwin.csv"
+
+  if ! curl -fs "$url"; then
+    echo "Failed to fetch erlef/otp_builds versions from: $url" >&2
+    return 1
+  fi
+}
+
+list_linux_versions() {
+  local arch
+  if command -v dpkg &>/dev/null; then
+    arch=$(dpkg --print-architecture)
+  else
+    case "$(uname -m)" in
+      x86_64) arch="amd64" ;;
+      aarch64) arch="arm64" ;;
+    esac
+  fi
+
+  local ubuntu_release
+  if command -v lsb_release &>/dev/null; then
+    ubuntu_release=$(lsb_release -rs)
+  elif [ -f /etc/os-release ]; then
+    ubuntu_release=$(. /etc/os-release && echo "$VERSION_ID")
+  else
+    ubuntu_release="22.04"
+  fi
+
+  local url="https://builds.hex.pm/builds/otp/${arch}/ubuntu-${ubuntu_release}/builds.txt"
+
+  if ! curl -fs "$url"; then
+    echo "Failed to fetch hex.pm versions from: $url" >&2
+    return 1
+  fi
+}
+
+sort_versions() {
+  LC_ALL=C sort -t. -k 1,1 -k 2,2n -k 3,3n
+}
+
+get_versions() {
+  local raw
+  case "$(uname -s)" in
+    Darwin)
+      raw=$(list_macos_versions) || exit 1
+      # CSV format: OTP-version,... — skip header, extract first field
+      echo "$raw" | sed 1d | cut -d "," -f 1
+      ;;
+    Linux)
+      raw=$(list_linux_versions) || exit 1
+      # builds.txt format: "OTP-version hash" — extract first field
+      echo "$raw" | cut -d " " -f 1
+      ;;
+    *)
+      echo "Unsupported OS: $(uname -s)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Normalize OTP-X.Y.Z -> X.Y.Z and sort
+versions=$(get_versions | sed -E 's/^OTP-//' | sort_versions)
+
+# Output as single space-separated line (asdf convention)
+echo $versions

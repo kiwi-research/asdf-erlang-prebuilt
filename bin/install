@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# Install Erlang/OTP from prebuilt binaries with source-build fallback.
+#
+# Prebuilt sources:
+#   macOS: erlef/otp_builds GitHub releases
+#   Linux: hex.pm/builds/otp (Ubuntu)
+#
+# Fallback: If prebuilt download fails (404/403), falls back to building
+# from source using kerl (same approach as asdf-erlang).
+
+set -euo pipefail
+
+install_erlang() {
+  local install_type="$1"
+  local version="$2"
+  local install_path="$3"
+
+  if [ "$install_type" != "version" ]; then
+    echo "asdf-erlang-prebuilt only supports version installs, not ref installs." >&2
+    exit 1
+  fi
+
+  local tmp_download_dir
+  if [ -n "${ASDF_DOWNLOAD_PATH:-}" ]; then
+    mkdir -p "$ASDF_DOWNLOAD_PATH"
+    tmp_download_dir="$ASDF_DOWNLOAD_PATH"
+  else
+    tmp_download_dir=$(mktemp -d -t erlang_build_XXXXXX)
+    trap "rm -rf '$tmp_download_dir'" EXIT
+  fi
+
+  install_prebuilt "$version" "$install_path" "$tmp_download_dir" ||
+    install_from_source "$version" "$install_path" "$tmp_download_dir"
+
+  # Verify installation
+  if [ ! -x "$install_path/bin/erl" ]; then
+    echo "ERROR: erl not found at $install_path/bin/erl after installation" >&2
+    exit 1
+  fi
+
+  echo "==> Erlang $version installed successfully"
+}
+
+install_prebuilt() {
+  local version="$1"
+  local install_path="$2"
+  local tmp_download_dir="$3"
+
+  local download_url
+  download_url=$(get_prebuilt_url "$version")
+
+  echo "==> Checking for prebuilt Erlang $version..."
+  local http_status
+  http_status=$(curl -I -w '%{http_code}' -s -o /dev/null "$download_url")
+
+  if [ "$http_status" -eq 404 ] || [ "$http_status" -eq 403 ]; then
+    echo "==> Prebuilt binary not available (HTTP $http_status), will try source build"
+    return 1
+  fi
+
+  local download_path="$tmp_download_dir/OTP-${version}.tar.gz"
+  echo "==> Downloading prebuilt Erlang $version..."
+  curl -fSL -o "$download_path" "$download_url" || {
+    echo "==> Download failed, will try source build"
+    return 1
+  }
+
+  echo "==> Extracting to $install_path..."
+  mkdir -p "$install_path"
+  tar zxf "$download_path" -C "$install_path" --strip-components=1 || {
+    echo "==> Extraction failed, will try source build"
+    return 1
+  }
+
+  # Linux hex.pm builds need the OTP Install script to create bin/ and boot files.
+  # macOS erlef builds come pre-configured.
+  if [ "$(uname -s)" = "Linux" ] && [ -f "$install_path/Install" ]; then
+    echo "==> Running OTP Install script..."
+    (cd "$install_path" && ./Install -minimal "$install_path")
+  fi
+}
+
+install_from_source() {
+  local version="$1"
+  local install_path="$2"
+  local tmp_download_dir="$3"
+
+  echo "==> Falling back to source build using kerl..."
+  echo "==> This requires build dependencies: autoconf, build-essential, libssl-dev, libncurses-dev"
+
+  # Check for kerl, download if not available
+  local kerl_bin="$tmp_download_dir/kerl"
+  if ! command -v kerl &>/dev/null; then
+    echo "==> Downloading kerl..."
+    curl -fSL -o "$kerl_bin" "https://raw.githubusercontent.com/kerl/kerl/master/kerl"
+    chmod +x "$kerl_bin"
+  else
+    kerl_bin="kerl"
+  fi
+
+  echo "==> Building Erlang $version from source (this will take a while)..."
+  "$kerl_bin" update releases
+  "$kerl_bin" build "$version" "$version"
+  "$kerl_bin" install "$version" "$install_path"
+
+  echo "==> Source build complete"
+}
+
+get_prebuilt_url() {
+  local version="$1"
+
+  case "$(uname -s)" in
+    Darwin)
+      local arch
+      case "$(uname -m)" in
+        x86_64) arch="x86_64" ;;
+        arm64) arch="aarch64" ;;
+      esac
+      echo "https://github.com/erlef/otp_builds/releases/download/OTP-${version}/otp-${arch}-apple-darwin.tar.gz"
+      ;;
+    Linux)
+      local arch
+      if command -v dpkg &>/dev/null; then
+        arch=$(dpkg --print-architecture)
+      else
+        case "$(uname -m)" in
+          x86_64) arch="amd64" ;;
+          aarch64) arch="arm64" ;;
+        esac
+      fi
+
+      local ubuntu_release
+      if command -v lsb_release &>/dev/null; then
+        ubuntu_release=$(lsb_release -rs)
+      elif [ -f /etc/os-release ]; then
+        ubuntu_release=$(. /etc/os-release && echo "$VERSION_ID")
+      else
+        ubuntu_release="22.04"
+      fi
+
+      echo "https://builds.hex.pm/builds/otp/${arch}/ubuntu-${ubuntu_release}/OTP-${version}.tar.gz"
+      ;;
+    *)
+      echo "Unsupported OS: $(uname -s)" >&2
+      return 1
+      ;;
+  esac
+}
+
+install_erlang "$ASDF_INSTALL_TYPE" "$ASDF_INSTALL_VERSION" "$ASDF_INSTALL_PATH"
