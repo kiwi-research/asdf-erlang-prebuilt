@@ -31,25 +31,59 @@ list_macos_versions() {
   fi
 }
 
-list_linux_versions() {
-  local arch
+detect_linux_arch() {
   if command -v dpkg &>/dev/null; then
-    arch=$(dpkg --print-architecture)
+    dpkg --print-architecture
   else
     case "$(uname -m)" in
-      x86_64) arch="amd64" ;;
-      aarch64) arch="arm64" ;;
+      x86_64) echo "amd64" ;;
+      aarch64) echo "arm64" ;;
     esac
   fi
+}
+
+# Map the current distro to a compatible Ubuntu version for hex.pm builds.
+# hex.pm provides builds for Ubuntu 20.04, 22.04, and 24.04.
+detect_ubuntu_release() {
+  # Allow explicit override
+  if [ -n "${ASDF_ERLANG_UBUNTU_RELEASE:-}" ]; then
+    echo "$ASDF_ERLANG_UBUNTU_RELEASE"
+    return
+  fi
+
+  local distro_id=""
+  local version_id=""
+  if [ -f /etc/os-release ]; then
+    distro_id=$(. /etc/os-release && echo "${ID:-}")
+    version_id=$(. /etc/os-release && echo "${VERSION_ID:-}")
+  fi
+
+  case "$distro_id" in
+    ubuntu)
+      echo "$version_id"
+      ;;
+    debian)
+      # Map Debian versions to compatible Ubuntu builds
+      case "${version_id%%.*}" in
+        10) echo "18.04" ;;
+        11) echo "20.04" ;;
+        12) echo "22.04" ;;
+        *) echo "24.04" ;;
+      esac
+      ;;
+    *)
+      # Default to latest Ubuntu LTS
+      echo "24.04"
+      ;;
+  esac
+}
+
+list_linux_versions() {
+  local arch
+  arch=$(detect_linux_arch)
 
   local ubuntu_release
-  if command -v lsb_release &>/dev/null; then
-    ubuntu_release=$(lsb_release -rs)
-  elif [ -f /etc/os-release ]; then
-    ubuntu_release=$(. /etc/os-release && echo "$VERSION_ID")
-  else
-    ubuntu_release="22.04"
-  fi
+  ubuntu_release=$(detect_ubuntu_release)
 
   local url="https://builds.hex.pm/builds/otp/${arch}/ubuntu-${ubuntu_release}/builds.txt"
 
