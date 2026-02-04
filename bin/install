@@ -46,9 +46,16 @@ detect_ubuntu_release() {
   esac
 }
 
+# Proto/asdf may pass versions like 28.2.0, but hex.pm and erlef use 28.2.
+# Strip trailing .0 patch to get the upstream version format.
+normalize_version() {
+  echo "$1" | sed -E 's/\.0$//'
+}
+
 install_erlang() {
   local install_type="$1"
-  local version="$2"
+  local version
+  version=$(normalize_version "$2")
   local install_path="$3"
 
   if [ "$install_type" != "version" ]; then

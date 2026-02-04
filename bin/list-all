@@ -117,8 +117,17 @@ get_versions() {
   esac
 }
 
-# Normalize OTP-X.Y.Z -> X.Y.Z and sort
-versions=$(get_versions | sed -E 's/^OTP-//' | sort_versions)
+# Normalize versions:
+#   OTP-X.Y.Z -> X.Y.Z (strip prefix)
+#   X.Y -> X.Y.0 (ensure semver-compatible 3-component format for proto)
+# Filter out pre-release versions (rc, etc.)
+versions=$(
+  get_versions |
+    sed -E 's/^OTP-//' |
+    grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' |
+    sed -E 's/^([0-9]+\.[0-9]+)$/\1.0/' |
+    sort_versions
+)
 
 # Output as single space-separated line (asdf convention)
 echo $versions
