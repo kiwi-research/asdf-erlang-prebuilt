@@ -127,6 +127,13 @@ install_prebuilt() {
     echo "==> Running OTP Install script..."
     (cd "$install_path" && ./Install -minimal "$install_path")
   fi
+
+  # Verify the binary actually runs (catches glibc incompatibility on non-Ubuntu distros)
+  if ! "$install_path/bin/erl" -noshell -eval 'halt().' 2>/dev/null; then
+    echo "==> Prebuilt binary is not compatible with this system, will try source build"
+    rm -rf "$install_path"/*
+    return 1
+  fi
 }
 
 install_from_source() {

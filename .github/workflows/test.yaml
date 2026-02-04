@@ -1,0 +1,87 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  ERLANG_VERSION: "28.2"
+
+jobs:
+  # Test prebuilt binary download on Ubuntu (expected fast path)
+  test-prebuilt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Erlang from prebuilt
+        env:
+          ASDF_INSTALL_TYPE: version
+          ASDF_INSTALL_VERSION: ${{ env.ERLANG_VERSION }}
+          ASDF_INSTALL_PATH: ${{ runner.temp }}/erlang
+        run: ./bin/install
+
+      - name: Verify erl works
+        run: |
+          ${{ runner.temp }}/erlang/bin/erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
+
+      - name: Verify list-all includes version
+        run: |
+          versions=$(./bin/list-all)
+          echo "$versions" | tr ' ' '\n' | grep -q "^${{ env.ERLANG_VERSION }}"
+
+  # Test source build fallback on Alpine (no prebuilt available — glibc incompatible)
+  test-source-build:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache bash curl git autoconf make gcc g++ openssl-dev ncurses-dev perl
+
+      - name: Install Erlang (should fall back to source build)
+        shell: bash
+        env:
+          ASDF_INSTALL_TYPE: version
+          ASDF_INSTALL_VERSION: ${{ env.ERLANG_VERSION }}
+          ASDF_INSTALL_PATH: ${{ runner.temp }}/erlang
+        run: ./bin/install
+        timeout-minutes: 30
+
+      - name: Verify erl works
+        shell: bash
+        run: |
+          ${{ runner.temp }}/erlang/bin/erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
+
+  # Test with proto's asdf backend
+  test-proto:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Install proto
+        run: curl -fsSL https://moonrepo.dev/install/proto.sh | bash -s -- --yes
+
+      - name: Configure proto
+        run: |
+          cat > .prototools << 'EOF'
+          "asdf:erlang" = "${{ env.ERLANG_VERSION }}"
+
+          [tools."asdf:erlang"]
+          asdf-repository = "https://github.com/${{ github.repository }}"
+          EOF
+
+      - name: Install Erlang via proto
+        env:
+          PROTO_HOME: ${{ github.workspace }}/.proto
+          PATH: ${{ github.workspace }}/.proto/bin:${{ github.workspace }}/.proto/shims:$PATH
+        run: |
+          export PATH="$HOME/.proto/bin:$HOME/.proto/shims:$PATH"
+          proto install "asdf:erlang"
+          erl -noshell -eval 'io:format("~s~n", [erlang:system_info(otp_release)]), halt().'
